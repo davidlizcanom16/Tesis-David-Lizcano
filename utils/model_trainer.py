@@ -264,3 +264,236 @@ def generate_alerts(predictions, pred_lower, pred_upper, historical_mean, histor
     # (Esto se puede mejorar con features temporales)
     
     return alerts
+# ==========================================
+# ANÁLISIS ECONÓMICO
+# ==========================================
+
+def estimar_costos_unitarios(df, precio_col='valor_total_diario', cantidad_col='cantidad_vendida_diaria'):
+    """
+    Estimar precio unitario promedio y estructura de costos
+    
+    Args:
+        df: DataFrame con datos del producto
+        precio_col: Columna con valor total diario
+        cantidad_col: Columna con cantidades vendidas
+    
+    Returns:
+        dict con precio_unitario, costo_unitario, margen_unitario
+    """
+    # Calcular precio unitario promedio
+    precio_unitario = df[precio_col].sum() / df[cantidad_col].sum()
+    
+    # Aplicar estructura de costos de literatura (Parsa et al., 2005)
+    # Restaurantes premium: 35% costo alimentos, 65% margen bruto
+    costo_ratio = 0.35
+    margen_ratio = 0.65
+    
+    costo_unitario = precio_unitario * costo_ratio
+    margen_unitario = precio_unitario * margen_ratio
+    
+    return {
+        'precio_unitario': precio_unitario,
+        'costo_unitario': costo_unitario,  # cu: costo de desperdicio
+        'margen_unitario': margen_unitario,  # co: costo de oportunidad
+        'costo_ratio': costo_ratio,
+        'margen_ratio': margen_ratio
+    }
+
+
+def calcular_costo_error(y_true, y_pred, cu, co):
+    """
+    Calcular costo total de error de predicción (Newsvendor Problem)
+    
+    Args:
+        y_true: Demanda real (array)
+        y_pred: Predicción (array)
+        cu: Costo unitario de desperdicio (overage cost)
+        co: Costo de oportunidad (underage cost)
+    
+    Returns:
+        dict con costo_total, costo_promedio_dia, breakdown
+    """
+    y_true = np.array(y_true)
+    y_pred = np.array(y_pred)
+    
+    # Costo por día
+    costos_diarios = []
+    excesos = []
+    faltantes = []
+    
+    for real, pred in zip(y_true, y_pred):
+        if pred > real:
+            # Exceso: desperdicio
+            exceso = pred - real
+            costo = cu * exceso
+            excesos.append(exceso)
+            faltantes.append(0)
+        else:
+            # Faltante: pérdida de venta
+            faltante = real - pred
+            costo = co * faltante
+            excesos.append(0)
+            faltantes.append(faltante)
+        
+        costos_diarios.append(costo)
+    
+    costo_total = sum(costos_diarios)
+    costo_promedio = np.mean(costos_diarios)
+    
+    return {
+        'costo_total': costo_total,
+        'costo_promedio_dia': costo_promedio,
+        'dias_exceso': sum(1 for e in excesos if e > 0),
+        'dias_faltante': sum(1 for f in faltantes if f > 0),
+        'exceso_total': sum(excesos),
+        'faltante_total': sum(faltantes)
+    }
+
+
+def generar_baselines(df, target_col='cantidad_vendida_diaria'):
+    """
+    Generar predicciones usando métodos baseline tradicionales
+    
+    Args:
+        df: DataFrame ordenado por fecha
+        target_col: Columna con cantidad vendida
+    
+    Returns:
+        DataFrame con predicciones de cada baseline
+    """
+    df = df.copy()
+    
+    # Baseline 1: Naive (semana anterior)
+    df['pred_naive'] = df[target_col].shift(7)
+    
+    # Baseline 2: Moving Average (4 semanas)
+    df['pred_ma'] = df[target_col].shift(1).rolling(window=28, min_periods=7).mean()
+    
+    # Baseline 3: Seasonal Naive (mismo día de la semana anterior)
+    df['dia_semana'] = pd.to_datetime(df['fecha']).dt.dayofweek
+    df['pred_seasonal'] = df.groupby('dia_semana')[target_col].shift(1)
+    
+    return df
+
+
+def comparar_metodos(df_test, y_pred_ml, costos_unitarios):
+    """
+    Comparar performance económico de ML vs baselines
+    
+    Args:
+        df_test: DataFrame de test con baselines generados
+        y_pred_ml: Predicciones del modelo ML
+        costos_unitarios: Dict con cu y co
+    
+    Returns:
+        DataFrame con comparación de métodos
+    """
+    cu = costos_unitarios['costo_unitario']
+    co = costos_unitarios['margen_unitario']
+    
+    y_true = df_test['cantidad_vendida_diaria'].values
+    
+    resultados = []
+    
+    # Método 1: Naive
+    mask_naive = ~df_test['pred_naive'].isna()
+    if mask_naive.sum() > 0:
+        mae_naive = mean_absolute_error(y_true[mask_naive], df_test['pred_naive'][mask_naive])
+        mape_naive = np.mean(np.abs((y_true[mask_naive] - df_test['pred_naive'][mask_naive]) / y_true[mask_naive])) * 100
+        costo_naive = calcular_costo_error(y_true[mask_naive], df_test['pred_naive'][mask_naive], cu, co)
+        
+        resultados.append({
+            'Método': 'Semana Anterior',
+            'MAE': mae_naive,
+            'MAPE': mape_naive,
+            'Costo Total': costo_naive['costo_total'],
+            'Costo/Día': costo_naive['costo_promedio_dia']
+        })
+    
+    # Método 2: Moving Average
+    mask_ma = ~df_test['pred_ma'].isna()
+    if mask_ma.sum() > 0:
+        mae_ma = mean_absolute_error(y_true[mask_ma], df_test['pred_ma'][mask_ma])
+        mape_ma = np.mean(np.abs((y_true[mask_ma] - df_test['pred_ma'][mask_ma]) / y_true[mask_ma])) * 100
+        costo_ma = calcular_costo_error(y_true[mask_ma], df_test['pred_ma'][mask_ma], cu, co)
+        
+        resultados.append({
+            'Método': 'Promedio 4 Semanas',
+            'MAE': mae_ma,
+            'MAPE': mape_ma,
+            'Costo Total': costo_ma['costo_total'],
+            'Costo/Día': costo_ma['costo_promedio_dia']
+        })
+    
+    # Método 3: Seasonal Naive
+    mask_seasonal = ~df_test['pred_seasonal'].isna()
+    if mask_seasonal.sum() > 0:
+        mae_seasonal = mean_absolute_error(y_true[mask_seasonal], df_test['pred_seasonal'][mask_seasonal])
+        mape_seasonal = np.mean(np.abs((y_true[mask_seasonal] - df_test['pred_seasonal'][mask_seasonal]) / y_true[mask_seasonal])) * 100
+        costo_seasonal = calcular_costo_error(y_true[mask_seasonal], df_test['pred_seasonal'][mask_seasonal], cu, co)
+        
+        resultados.append({
+            'Método': 'Mismo Día Sem. Ant.',
+            'MAE': mae_seasonal,
+            'MAPE': mape_seasonal,
+            'Costo Total': costo_seasonal['costo_total'],
+            'Costo/Día': costo_seasonal['costo_promedio_dia']
+        })
+    
+    # Método 4: ML (XGBoost)
+    mae_ml = mean_absolute_error(y_true, y_pred_ml)
+    mape_ml = np.mean(np.abs((y_true - y_pred_ml) / y_true)) * 100
+    costo_ml = calcular_costo_error(y_true, y_pred_ml, cu, co)
+    
+    resultados.append({
+        'Método': 'ML (XGBoost)',
+        'MAE': mae_ml,
+        'MAPE': mape_ml,
+        'Costo Total': costo_ml['costo_total'],
+        'Costo/Día': costo_ml['costo_promedio_dia']
+    })
+    
+    df_comparacion = pd.DataFrame(resultados)
+    
+    return df_comparacion
+
+
+def calcular_ahorro_economico(df_comparacion, dias_mes=30, dias_año=365):
+    """
+    Calcular ahorro económico del ML vs mejor baseline
+    
+    Args:
+        df_comparacion: DataFrame con comparación de métodos
+        dias_mes: Días promedio por mes (default: 30)
+        dias_año: Días por año (default: 365)
+    
+    Returns:
+        dict con ahorros y mejoras
+    """
+    # Encontrar mejor baseline (menor costo)
+    baselines = df_comparacion[df_comparacion['Método'] != 'ML (XGBoost)']
+    mejor_baseline = baselines.loc[baselines['Costo/Día'].idxmin()]
+    
+    ml_row = df_comparacion[df_comparacion['Método'] == 'ML (XGBoost)'].iloc[0]
+    
+    # Calcular ahorros
+    ahorro_dia = mejor_baseline['Costo/Día'] - ml_row['Costo/Día']
+    ahorro_mes = ahorro_dia * dias_mes
+    ahorro_año = ahorro_dia * dias_año
+    
+    # Calcular mejoras porcentuales
+    mejora_mae = ((mejor_baseline['MAE'] - ml_row['MAE']) / mejor_baseline['MAE']) * 100
+    mejora_mape = ((mejor_baseline['MAPE'] - ml_row['MAPE']) / mejor_baseline['MAPE']) * 100
+    mejora_costo = ((mejor_baseline['Costo/Día'] - ml_row['Costo/Día']) / mejor_baseline['Costo/Día']) * 100
+    
+    return {
+        'mejor_baseline': mejor_baseline['Método'],
+        'ahorro_dia': ahorro_dia,
+        'ahorro_mes': ahorro_mes,
+        'ahorro_año': ahorro_año,
+        'mejora_mae': mejora_mae,
+        'mejora_mape': mejora_mape,
+        'mejora_costo': mejora_costo,
+        'costo_baseline': mejor_baseline['Costo/Día'],
+        'costo_ml': ml_row['Costo/Día']
+    }
