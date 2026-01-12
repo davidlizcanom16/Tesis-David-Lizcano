@@ -10,12 +10,13 @@ from datetime import datetime, timedelta
 import sys
 import os
 
+
 # Imports
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
 from utils.data_loader import cargar_datos
 from utils.feature_engineering import create_all_features, get_feature_columns
-from utils.model_trainer import XGBoostPredictor, calculate_metrics, generate_alerts
+from utils.model_trainer import XGBoostPredictor, calculate_metrics, generate_alerts, estimar_costos_unitarios, calcular_costo_error, generar_baselines, comparar_metodos, calcular_ahorro_economico
 
 # ==========================================
 # CONFIGURACIÓN
@@ -387,12 +388,39 @@ if entrenar:
             
             progress_bar.progress(70)
             
-            # 6. Predecir en test
+           # 6. Predecir en test
             status_text.text("🎯 Evaluando en test...")
             
             y_pred_test, y_pred_test_lower, y_pred_test_upper = predictor.predict(X_test, return_intervals=True)
             
             progress_bar.progress(80)
+            
+            # 6.5. NUEVO: Calcular análisis económico
+            status_text.text("💰 Calculando impacto económico...")
+            
+            # Estimar costos unitarios
+            costos_unitarios = estimar_costos_unitarios(df_producto)
+            
+            st.info(f"""
+            📊 **Estructura de Costos Estimada:**
+            - Precio unitario promedio: ${costos_unitarios['precio_unitario']:,.0f} COP
+            - Costo unitario (35%): ${costos_unitarios['costo_unitario']:,.0f} COP
+            - Margen unitario (65%): ${costos_unitarios['margen_unitario']:,.0f} COP
+            """)
+            
+            # Generar baselines en todo el dataset
+            df_with_baselines = generar_baselines(df_features)
+            
+            # Extraer solo test
+            df_test_baselines = df_with_baselines[split_idx:].copy()
+            
+            # Comparar métodos
+            df_comparacion = comparar_metodos(df_test_baselines, y_pred_test, costos_unitarios)
+            
+            # Calcular ahorro
+            ahorro_info = calcular_ahorro_economico(df_comparacion)
+            
+            progress_bar.progress(82)
             
             # 7. Preparar predicción futura
             status_text.text("🔮 Preparando predicción futura...")
@@ -470,7 +498,11 @@ if entrenar:
                 'y_pred_future_upper': y_pred_future_upper,
                 'df_producto': df_producto,
                 'alerts': alerts,
-                'producto_nombre': producto_seleccionado
+                'producto_nombre': producto_seleccionado,
+                # NUEVO: Datos económicos
+                'costos_unitarios': costos_unitarios,
+                'df_comparacion': df_comparacion,
+                'ahorro_info': ahorro_info
             })
             
             progress_bar.empty()
@@ -537,8 +569,8 @@ if 'predictor' in st.session_state:
         
         st.divider()
     
-    # ==========================================
-    # MÉTRICAS
+   # ==========================================
+    # MÉTRICAS DEL MODELO
     # ==========================================
     
     st.subheader("📊 Métricas del Modelo")
@@ -556,6 +588,172 @@ if 'predictor' in st.session_state:
         st.metric("Precisión", f"{precision:.1f}%")
     
     st.divider()
+    
+    # ==========================================
+    # NUEVO: COMPARACIÓN DE MÉTODOS
+    # ==========================================
+    
+    st.subheader("📊 Comparación con Métodos Tradicionales")
+    
+    # Extraer datos
+    df_comparacion = st.session_state['df_comparacion']
+    costos_unitarios = st.session_state['costos_unitarios']
+    
+    st.markdown("""
+    **Métodos Baseline Tradicionales:**
+    - **Semana Anterior:** Repetir ventas de hace 7 días
+    - **Promedio 4 Semanas:** Promedio móvil de últimos 28 días  
+    - **Mismo Día Sem. Ant.:** Mismo día de la semana pasada (ej: martes anterior)
+    """)
+    
+    # Tabla comparativa
+    df_display = df_comparacion.copy()
+    df_display['MAE'] = df_display['MAE'].round(2)
+    df_display['MAPE'] = df_display['MAPE'].round(1).astype(str) + '%'
+    df_display['Costo Total'] = df_display['Costo Total'].apply(lambda x: f"${x:,.0f}")
+    df_display['Costo/Día'] = df_display['Costo/Día'].apply(lambda x: f"${x:,.0f}")
+    
+    # Aplicar estilo
+    def highlight_ml(row):
+        if row['Método'] == 'ML (XGBoost)':
+            return ['background-color: #d4edda; font-weight: bold'] * len(row)
+        return [''] * len(row)
+    
+    st.dataframe(
+        df_display.style.apply(highlight_ml, axis=1),
+        use_container_width=True,
+        hide_index=True
+    )
+    
+    st.divider()
+    
+    # ==========================================
+    # NUEVO: IMPACTO ECONÓMICO
+    # ==========================================
+    
+    st.subheader("💰 Impacto Económico del Modelo")
+    
+    ahorro_info = st.session_state['ahorro_info']
+    
+    # Contexto de costos
+    with st.expander("ℹ️ Metodología de Cálculo de Costos"):
+        st.markdown(f"""
+        **Estructura de Costos (basada en Parsa et al., 2005):**
+        
+        - **Precio unitario promedio:** ${costos_unitarios['precio_unitario']:,.0f} COP
+          - Calculado de `valor_total_diario` ÷ `cantidad_vendida_diaria`
+        
+        - **Costo de desperdicio (cu):** ${costos_unitarios['costo_unitario']:,.0f} COP ({costos_unitarios['costo_ratio']*100:.0f}%)
+          - Representa el costo de alimentos perdido por exceso de inventario
+        
+        - **Costo de oportunidad (co):** ${costos_unitarios['margen_unitario']:,.0f} COP ({costos_unitarios['margen_ratio']*100:.0f}%)
+          - Representa la ganancia perdida por falta de inventario
+        
+        **Modelo de Costo (Newsvendor Problem):**
+```
+        Si predicción > demanda real:
+            Costo = cu × (predicción - demanda)  [desperdicio]
+        
+        Si predicción < demanda real:
+            Costo = co × (demanda - predicción)  [pérdida de venta]
+```
+        
+        **Referencias:**
+        - Parsa, H.G., et al. (2005). "Why Restaurants Fail"
+        - Nahmias, S. (2011). "Perishable Inventory Theory"
+        """)
+    
+    # KPIs de ahorro
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        st.metric(
+            "💵 Ahorro Diario",
+            f"${ahorro_info['ahorro_dia']:,.0f}",
+            delta=f"{ahorro_info['mejora_costo']:.1f}% vs {ahorro_info['mejor_baseline']}",
+            help=f"Reducción de costo diario: ${ahorro_info['costo_baseline']:,.0f} → ${ahorro_info['costo_ml']:,.0f}"
+        )
+    
+    with col2:
+        st.metric(
+            "📅 Ahorro Mensual",
+            f"${ahorro_info['ahorro_mes']:,.0f}",
+            help="Ahorro estimado por 30 días de operación"
+        )
+    
+    with col3:
+        st.metric(
+            "📆 Ahorro Anual",
+            f"${ahorro_info['ahorro_año']:,.0f}",
+            help="Proyección anual (365 días)"
+        )
+    
+    # Gráfico de comparación de costos
+    st.markdown("### 📊 Comparación de Costos por Método")
+    
+    fig_costos = go.Figure()
+    
+    # Extraer datos para el gráfico
+    metodos = df_comparacion['Método'].tolist()
+    costos = df_comparacion['Costo/Día'].tolist()
+    
+    # Colores: baselines en gris, ML en verde
+    colores = ['#95a5a6' if m != 'ML (XGBoost)' else '#28a745' for m in metodos]
+    
+    fig_costos.add_trace(go.Bar(
+        x=metodos,
+        y=costos,
+        marker=dict(color=colores),
+        text=[f"${c:,.0f}" for c in costos],
+        textposition='outside'
+    ))
+    
+    fig_costos.update_layout(
+        yaxis_title="Costo Promedio por Día (COP)",
+        template='plotly_white',
+        height=400,
+        showlegend=False
+    )
+    
+    st.plotly_chart(fig_costos, use_container_width=True)
+    
+    # Resumen de mejoras
+    st.markdown("### 🎯 Resumen de Mejoras")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.markdown(f"""
+        **Reducción de Error:**
+        - MAE: **↓ {ahorro_info['mejora_mae']:.1f}%**
+        - MAPE: **↓ {ahorro_info['mejora_mape']:.1f}%**
+        """)
+    
+    with col2:
+        st.markdown(f"""
+        **Impacto Económico:**
+        - Costo/día: **↓ {ahorro_info['mejora_costo']:.1f}%**
+        - Ahorro mensual: **${ahorro_info['ahorro_mes']:,.0f}**
+        """)
+    
+    # Interpretación
+    st.info(f"""
+    💡 **Interpretación:** 
+    
+    El modelo ML reduce el costo de error de predicción en **{ahorro_info['mejora_costo']:.1f}%** 
+    comparado con el mejor método tradicional ({ahorro_info['mejor_baseline']}). 
+    
+    Esto se traduce en un ahorro estimado de **${ahorro_info['ahorro_mes']:,.0f} COP por mes** 
+    para este producto, considerando:
+    - Reducción de desperdicio (sobrestock)
+    - Reducción de ventas perdidas (stockouts)
+    - Optimización del ciclo de compras
+    
+    **Proyección anual:** ${ahorro_info['ahorro_año']:,.0f} COP
+    """)
+    
+    st.divider()
+    
     
     # ==========================================
     # TABS
