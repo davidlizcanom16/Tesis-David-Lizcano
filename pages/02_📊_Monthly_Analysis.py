@@ -317,4 +317,36 @@ dias_semana_map = {
     'Thursday': 'Thu', 'Friday': 'Fri', 'Saturday': 'Sat', 'Sunday': 'Sun'
 }
 mejor_dia_sem = df_mes.groupby('dia_semana')['venta_pesos'].sum().idxmax()
-mejor_dia_sem_short = di
+mejor_dia_sem_short = dias_semana_map.get(mejor_dia_sem, mejor_dia_sem)  # LÍNEA CORREGIDA
+
+# Display metrics
+col1, col2, col3, col4 = st.columns(4)
+
+with col1:
+    st.metric(
+        label="Monthly Revenue",
+        value=f"${ventas_mes/1e6:.2f}M",
+        delta=f"{cambio:+.1f}% MoM",
+        help="Total revenue for the selected month"
+    )
+
+with col2:
+    st.metric(
+        label="Operating Days",
+        value=dias_operacion,
+        help="Number of days with recorded sales"
+    )
+
+with col3:
+    st.metric(
+        label="Avg Daily Revenue",
+        value=f"${ventas_prom_dia/1e3:.1f}K",
+        help="Average revenue per operating day"
+    )
+
+with col4:
+    st.metric(
+        label="Peak Day",
+        value=mejor_dia_sem_short,
+        help="Best performing day of the week"
+    )
