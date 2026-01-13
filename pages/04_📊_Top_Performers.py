@@ -669,14 +669,17 @@ tabla_resumen['frecuencia'] = tabla_resumen['frecuencia'] * 100
 # Rename columns for display
 tabla_resumen.columns = ['Product', 'Total Revenue', 'Units Sold', 'Avg Transaction', 'Frequency (%)', 'Score']
 
+# Format values
+tabla_resumen_display = tabla_resumen.copy()
+tabla_resumen_display['Total Revenue'] = tabla_resumen_display['Total Revenue'].apply(lambda x: f"${x:,.0f}")
+tabla_resumen_display['Units Sold'] = tabla_resumen_display['Units Sold'].apply(lambda x: f"{x:,.0f}")
+tabla_resumen_display['Avg Transaction'] = tabla_resumen_display['Avg Transaction'].apply(lambda x: f"${x:,.0f}")
+tabla_resumen_display['Frequency (%)'] = tabla_resumen_display['Frequency (%)'].apply(lambda x: f"{x:.0f}%")
+tabla_resumen_display['Score'] = tabla_resumen_display['Score'].apply(lambda x: f"{x:.1f}")
+
+# Display without gradient (avoiding matplotlib dependency)
 st.dataframe(
-    tabla_resumen.style.format({
-        'Total Revenue': '${:,.0f}',
-        'Units Sold': '{:,.0f}',
-        'Avg Transaction': '${:,.0f}',
-        'Frequency (%)': '{:.0f}%',
-        'Score': '{:.1f}'
-    }).background_gradient(subset=['Score'], cmap='Blues'),
+    tabla_resumen_display,
     use_container_width=True,
     height=400
 )
