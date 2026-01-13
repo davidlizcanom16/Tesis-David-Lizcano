@@ -1,4 +1,9 @@
-# pages/01_📅_Vista_Anual.py
+# pages/01_📊_Annual_Performance.py
+"""
+Annual Performance Dashboard
+Comprehensive yearly analytics for restaurant operations
+"""
+
 import streamlit as st
 import pandas as pd
 import plotly.express as px
@@ -7,172 +12,352 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
+
 from utils.data_loader import cargar_datos, get_restaurante_color, formatear_numero
 from utils.metrics import calcular_metricas_anuales
 
-st.set_page_config(page_title="Vista Anual", page_icon="📅", layout="wide")
+# ==========================================
+# PAGE CONFIGURATION
+# ==========================================
+
+st.set_page_config(
+    page_title="Annual Performance",
+    page_icon="📊",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
 
 # ==========================================
-# ESTILOS
+# PROFESSIONAL STYLING
 # ==========================================
 
 st.markdown("""
 <style>
-    .big-metric {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        color: white;
+    /* Global Styles */
+    .main {
+        background-color: #f8fafc;
+    }
+    
+    /* Professional Header */
+    .dashboard-header {
+        background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%);
         padding: 2rem;
-        border-radius: 1rem;
-        text-align: center;
-        margin: 1rem 0;
+        border-radius: 0.5rem;
+        margin-bottom: 2rem;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
     }
-    .big-metric-value {
-        font-size: 3rem;
-        font-weight: 800;
+    
+    .dashboard-title {
+        color: white;
+        font-size: 2rem;
+        font-weight: 700;
         margin: 0;
+        letter-spacing: -0.5px;
     }
-    .big-metric-label {
+    
+    .dashboard-subtitle {
+        color: #e0e7ff;
         font-size: 1rem;
-        opacity: 0.9;
-        text-transform: uppercase;
-        letter-spacing: 2px;
+        margin: 0.5rem 0 0 0;
+        font-weight: 400;
     }
-    .highlight-box {
-        background: #f8f9fa;
+    
+    /* Professional Metrics */
+    .metric-container {
+        background: white;
         padding: 1.5rem;
         border-radius: 0.5rem;
-        border-left: 5px solid #FF6B6B;
+        border-left: 4px solid #3b82f6;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        height: 100%;
+    }
+    
+    .metric-label {
+        color: #64748b;
+        font-size: 0.875rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        margin-bottom: 0.5rem;
+    }
+    
+    .metric-value {
+        color: #0f172a;
+        font-size: 2rem;
+        font-weight: 700;
+        line-height: 1;
+    }
+    
+    .metric-delta {
+        color: #10b981;
+        font-size: 0.875rem;
+        font-weight: 500;
+        margin-top: 0.5rem;
+    }
+    
+    /* Section Headers */
+    .section-header {
+        color: #1e293b;
+        font-size: 1.5rem;
+        font-weight: 700;
+        margin: 2rem 0 1rem 0;
+        padding-bottom: 0.5rem;
+        border-bottom: 2px solid #e2e8f0;
+    }
+    
+    /* Filter Section */
+    .filter-section {
+        background: white;
+        padding: 1.5rem;
+        border-radius: 0.5rem;
+        margin-bottom: 2rem;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    }
+    
+    /* Restaurant Badge */
+    .restaurant-badge {
+        display: inline-block;
+        padding: 0.5rem 1rem;
+        border-radius: 0.375rem;
+        font-weight: 600;
+        font-size: 0.875rem;
+        background: #eff6ff;
+        color: #1e40af;
+        border: 1px solid #bfdbfe;
+    }
+    
+    /* Insight Box */
+    .insight-box {
+        background: #f0f9ff;
+        border-left: 4px solid #0ea5e9;
+        padding: 1rem;
+        border-radius: 0.375rem;
         margin: 1rem 0;
+    }
+    
+    .insight-box p {
+        margin: 0;
+        color: #0c4a6e;
+        font-weight: 500;
+    }
+    
+    /* Ranking Card */
+    .ranking-card {
+        background: white;
+        padding: 1rem;
+        border-radius: 0.5rem;
+        margin-bottom: 0.75rem;
+        border: 1px solid #e2e8f0;
+        transition: all 0.2s;
+    }
+    
+    .ranking-card:hover {
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        transform: translateY(-2px);
+    }
+    
+    .ranking-position {
+        font-size: 1.5rem;
+        font-weight: 700;
+        color: #64748b;
+    }
+    
+    .ranking-name {
+        font-size: 1rem;
+        font-weight: 600;
+        color: #1e293b;
+        margin-bottom: 0.25rem;
+    }
+    
+    .ranking-value {
+        font-size: 1.25rem;
+        font-weight: 700;
+        color: #3b82f6;
+    }
+    
+    .ranking-percentage {
+        font-size: 0.875rem;
+        color: #64748b;
+    }
+    
+    /* Divider */
+    .divider {
+        height: 1px;
+        background: #e2e8f0;
+        margin: 2rem 0;
     }
 </style>
 """, unsafe_allow_html=True)
 
 # ==========================================
-# CARGAR DATOS
+# LOAD DATA
 # ==========================================
 
 df = cargar_datos()
 
 if df is None:
-    st.error("❌ Error cargando datos")
+    st.error("⚠️ Unable to load data. Please check data sources.")
     st.stop()
 
+# Add helper column for month names
+meses_nombres = {
+    1: 'Jan', 2: 'Feb', 3: 'Mar', 4: 'Apr', 5: 'May', 6: 'Jun',
+    7: 'Jul', 8: 'Aug', 9: 'Sep', 10: 'Oct', 11: 'Nov', 12: 'Dec'
+}
+df['mes_nombre'] = df['mes'].map(meses_nombres)
+
 # ==========================================
-# HEADER Y FILTROS
+# HEADER
 # ==========================================
 
-st.title("📅 Vista Anual - Resumen Ejecutivo")
-st.markdown("---")
+st.markdown("""
+<div class='dashboard-header'>
+    <h1 class='dashboard-title'>Annual Performance Dashboard</h1>
+    <p class='dashboard-subtitle'>Comprehensive yearly analytics and key performance indicators</p>
+</div>
+""", unsafe_allow_html=True)
 
-# FILTROS PRINCIPALES
+# ==========================================
+# FILTERS
+# ==========================================
+
+st.markdown("<div class='filter-section'>", unsafe_allow_html=True)
+
 col1, col2, col3 = st.columns([2, 2, 2])
 
 with col1:
     años_disponibles = sorted(df['año'].unique(), reverse=True)
     año_seleccionado = st.selectbox(
-        "📅 Selecciona el año",
+        "Fiscal Year",
         años_disponibles,
-        index=0
+        index=0,
+        help="Select the fiscal year for analysis"
     )
 
 with col2:
-    restaurantes = ['Todos'] + sorted(df['restaurante'].unique().tolist())
+    restaurantes = ['All Locations'] + sorted(df['restaurante'].unique().tolist())
     restaurante_sel = st.selectbox(
-        "🏪 Selecciona restaurante",
+        "Location",
         restaurantes,
-        index=0
+        index=0,
+        help="Filter by specific restaurant location"
     )
 
 with col3:
-    st.markdown("<br>", unsafe_allow_html=True)
-    if restaurante_sel != 'Todos':
+    if restaurante_sel != 'All Locations':
         color = get_restaurante_color(restaurante_sel)
         st.markdown(f"""
-        <div style='background: {color}; color: white; padding: 0.5rem 1rem; 
-                    border-radius: 0.5rem; text-align: center; font-weight: 700;'>
-            📍 {restaurante_sel}
+        <div style='margin-top: 1.8rem;'>
+            <span class='restaurant-badge'>{restaurante_sel}</span>
         </div>
         """, unsafe_allow_html=True)
+    else:
+        st.markdown("<div style='margin-top: 1.8rem;'></div>", unsafe_allow_html=True)
 
-st.markdown("---")
+st.markdown("</div>", unsafe_allow_html=True)
 
-# FILTRAR DATOS
-if restaurante_sel == 'Todos':
+# ==========================================
+# FILTER DATA
+# ==========================================
+
+if restaurante_sel == 'All Locations':
     df_filtrado = df[df['año'] == año_seleccionado]
 else:
     df_filtrado = df[(df['año'] == año_seleccionado) & (df['restaurante'] == restaurante_sel)]
 
 if len(df_filtrado) == 0:
-    st.warning(f"No hay datos para {restaurante_sel} en {año_seleccionado}")
+    st.warning(f"No data available for {restaurante_sel} in {año_seleccionado}")
     st.stop()
 
 # ==========================================
-# MÉTRICAS ANUALES
+# KEY PERFORMANCE INDICATORS
 # ==========================================
 
-st.header(f"📊 Indicadores Clave {año_seleccionado}")
+st.markdown("<h2 class='section-header'>Key Performance Indicators</h2>", unsafe_allow_html=True)
 
+# Calculate metrics
 ventas_totales = df_filtrado['venta_pesos'].sum()
 unidades_totales = df_filtrado['cantidad_vendida_diaria'].sum()
 dias_operacion = df_filtrado['fecha'].nunique()
 productos_activos = df_filtrado['producto'].nunique()
 
+# Calculate YoY change if previous year exists
+año_anterior = año_seleccionado - 1
+if año_anterior in df['año'].unique():
+    if restaurante_sel == 'All Locations':
+        df_año_anterior = df[df['año'] == año_anterior]
+    else:
+        df_año_anterior = df[(df['año'] == año_anterior) & (df['restaurante'] == restaurante_sel)]
+    
+    ventas_año_anterior = df_año_anterior['venta_pesos'].sum()
+    if ventas_año_anterior > 0:
+        variacion_yoy = ((ventas_totales - ventas_año_anterior) / ventas_año_anterior) * 100
+    else:
+        variacion_yoy = 0
+else:
+    variacion_yoy = None
+
+# Display metrics
 col1, col2, col3, col4 = st.columns(4)
 
 with col1:
-    st.markdown(f"""
-    <div class='big-metric' style='background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);'>
-        <div class='big-metric-label'>💰 Ventas Totales</div>
-        <div class='big-metric-value'>${ventas_totales/1e6:.1f}M</div>
-    </div>
-    """, unsafe_allow_html=True)
+    delta_str = f"{variacion_yoy:+.1f}% YoY" if variacion_yoy is not None else None
+    st.metric(
+        label="Total Revenue",
+        value=f"${ventas_totales/1e6:.2f}M",
+        delta=delta_str,
+        help="Total revenue for the selected period"
+    )
 
 with col2:
-    st.markdown(f"""
-    <div class='big-metric' style='background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);'>
-        <div class='big-metric-label'>📦 Unidades Vendidas</div>
-        <div class='big-metric-value'>{unidades_totales:,.0f}</div>
-    </div>
-    """, unsafe_allow_html=True)
+    st.metric(
+        label="Units Sold",
+        value=f"{unidades_totales:,.0f}",
+        help="Total number of units sold"
+    )
 
 with col3:
-    st.markdown(f"""
-    <div class='big-metric' style='background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);'>
-        <div class='big-metric-label'>📅 Días Operación</div>
-        <div class='big-metric-value'>{dias_operacion}</div>
-    </div>
-    """, unsafe_allow_html=True)
+    st.metric(
+        label="Operating Days",
+        value=f"{dias_operacion}",
+        help="Number of days with recorded sales"
+    )
 
 with col4:
-    st.markdown(f"""
-    <div class='big-metric' style='background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);'>
-        <div class='big-metric-label'>🍽️ Productos Activos</div>
-        <div class='big-metric-value'>{productos_activos}</div>
-    </div>
-    """, unsafe_allow_html=True)
-
-st.markdown("<br>", unsafe_allow_html=True)
+    st.metric(
+        label="Active Products",
+        value=f"{productos_activos}",
+        help="Number of unique products sold"
+    )
 
 # ==========================================
-# ANÁLISIS MENSUAL
+# MONTHLY TREND ANALYSIS
 # ==========================================
 
-st.header("📈 Tendencia Mensual")
+st.markdown("<div class='divider'></div>", unsafe_allow_html=True)
+st.markdown("<h2 class='section-header'>Monthly Revenue Trend</h2>", unsafe_allow_html=True)
 
+# Prepare monthly data
 ventas_mes = df_filtrado.groupby(['mes', 'mes_nombre'])['venta_pesos'].sum().reset_index()
 ventas_mes = ventas_mes.sort_values('mes')
 
-fig = px.bar(
-    ventas_mes,
-    x='mes_nombre',
-    y='venta_pesos',
-    title=f'Ventas Mensuales {año_seleccionado}',
-    labels={'mes_nombre': 'Mes', 'venta_pesos': 'Ventas (COP)'},
-    color='venta_pesos',
-    color_continuous_scale='Viridis'
-)
+# Create professional chart
+fig = go.Figure()
 
-# Marcar mejor y peor mes
+fig.add_trace(go.Bar(
+    x=ventas_mes['mes_nombre'],
+    y=ventas_mes['venta_pesos'],
+    marker=dict(
+        color=ventas_mes['venta_pesos'],
+        colorscale=[[0, '#3b82f6'], [1, '#1e3a8a']],
+        line=dict(color='#1e40af', width=1)
+    ),
+    text=[f'${v/1e6:.1f}M' for v in ventas_mes['venta_pesos']],
+    textposition='outside',
+    hovertemplate='<b>%{x}</b><br>Revenue: $%{y:,.0f}<extra></extra>'
+))
+
+# Highlight best and worst months
 if len(ventas_mes) > 0:
     mejor_idx = ventas_mes['venta_pesos'].idxmax()
     peor_idx = ventas_mes['venta_pesos'].idxmin()
@@ -180,165 +365,262 @@ if len(ventas_mes) > 0:
     fig.add_annotation(
         x=ventas_mes.loc[mejor_idx, 'mes_nombre'],
         y=ventas_mes.loc[mejor_idx, 'venta_pesos'],
-        text="🏆 Mejor Mes",
+        text="Peak",
         showarrow=True,
         arrowhead=2,
-        bgcolor="#43e97b",
-        font=dict(color="white")
+        arrowcolor="#10b981",
+        bgcolor="#10b981",
+        font=dict(color="white", size=11),
+        bordercolor="#10b981",
+        borderwidth=2
     )
     
     fig.add_annotation(
         x=ventas_mes.loc[peor_idx, 'mes_nombre'],
         y=ventas_mes.loc[peor_idx, 'venta_pesos'],
-        text="⚠️ Peor Mes",
+        text="Low",
         showarrow=True,
         arrowhead=2,
-        bgcolor="#f5576c",
-        font=dict(color="white")
+        arrowcolor="#ef4444",
+        bgcolor="#ef4444",
+        font=dict(color="white", size=11),
+        bordercolor="#ef4444",
+        borderwidth=2
     )
 
-fig.update_layout(height=500, showlegend=False)
+fig.update_layout(
+    title=dict(
+        text=f'Monthly Revenue Distribution - {año_seleccionado}',
+        font=dict(size=16, color='#1e293b', family='Arial')
+    ),
+    xaxis=dict(
+        title='Month',
+        showgrid=False,
+        zeroline=False
+    ),
+    yaxis=dict(
+        title='Revenue (COP)',
+        showgrid=True,
+        gridcolor='#f1f5f9',
+        zeroline=False
+    ),
+    plot_bgcolor='white',
+    paper_bgcolor='white',
+    height=450,
+    showlegend=False,
+    hovermode='x unified'
+)
+
 st.plotly_chart(fig, use_container_width=True)
 
 # ==========================================
-# COMPARATIVA RESTAURANTES (SOLO SI ES "TODOS")
+# LOCATION COMPARISON (IF ALL LOCATIONS)
 # ==========================================
 
-if restaurante_sel == 'Todos':
-    st.markdown("---")
-    st.header("🏆 Comparativa entre Restaurantes")
+if restaurante_sel == 'All Locations':
+    st.markdown("<div class='divider'></div>", unsafe_allow_html=True)
+    st.markdown("<h2 class='section-header'>Location Performance Comparison</h2>", unsafe_allow_html=True)
     
     col1, col2 = st.columns([2, 1])
     
     with col1:
-        ventas_rest_mes = df_filtrado.groupby(['mes_nombre', 'restaurante'])['venta_pesos'].sum().reset_index()
+        # Monthly evolution by location
+        ventas_rest_mes = df_filtrado.groupby(['mes_nombre', 'restaurante', 'mes'])['venta_pesos'].sum().reset_index()
+        ventas_rest_mes = ventas_rest_mes.sort_values('mes')
         
-        fig = px.line(
-            ventas_rest_mes,
-            x='mes_nombre',
-            y='venta_pesos',
-            color='restaurante',
-            title='Evolución Mensual por Restaurante',
-            labels={'mes_nombre': 'Mes', 'venta_pesos': 'Ventas (COP)', 'restaurante': 'Restaurante'},
-            markers=True,
-            color_discrete_map={r: get_restaurante_color(r) for r in df['restaurante'].unique()}
+        fig = go.Figure()
+        
+        for restaurante in df_filtrado['restaurante'].unique():
+            data = ventas_rest_mes[ventas_rest_mes['restaurante'] == restaurante]
+            color = get_restaurante_color(restaurante)
+            
+            fig.add_trace(go.Scatter(
+                x=data['mes_nombre'],
+                y=data['venta_pesos'],
+                name=restaurante,
+                mode='lines+markers',
+                line=dict(color=color, width=3),
+                marker=dict(size=8, color=color, line=dict(width=2, color='white')),
+                hovertemplate=f'<b>{restaurante}</b><br>%{{x}}: $%{{y:,.0f}}<extra></extra>'
+            ))
+        
+        fig.update_layout(
+            title=dict(
+                text='Monthly Revenue by Location',
+                font=dict(size=16, color='#1e293b')
+            ),
+            xaxis=dict(title='Month', showgrid=False),
+            yaxis=dict(title='Revenue (COP)', showgrid=True, gridcolor='#f1f5f9'),
+            plot_bgcolor='white',
+            paper_bgcolor='white',
+            height=400,
+            legend=dict(
+                orientation="h",
+                yanchor="bottom",
+                y=1.02,
+                xanchor="right",
+                x=1
+            ),
+            hovermode='x unified'
         )
-        fig.update_layout(height=400)
+        
         st.plotly_chart(fig, use_container_width=True)
     
     with col2:
+        # Annual ranking
+        st.markdown("**Annual Ranking**")
+        
         ventas_rest = df_filtrado.groupby('restaurante')['venta_pesos'].sum().sort_values(ascending=False)
         
-        st.subheader("Ranking Anual")
-        
         for i, (rest, venta) in enumerate(ventas_rest.items(), 1):
-            emoji = "🥇" if i == 1 else "🥈" if i == 2 else "🥉"
+            position_emoji = "🥇" if i == 1 else "🥈" if i == 2 else "🥉"
             porcentaje = (venta / ventas_rest.sum()) * 100
             color = get_restaurante_color(rest)
             
             st.markdown(f"""
-            <div style='background: {color}20; padding: 1rem; border-radius: 0.5rem; margin-bottom: 0.5rem; border-left: 4px solid {color};'>
-                <div style='font-size: 1.5rem;'>{emoji} <strong>{rest}</strong></div>
-                <div style='font-size: 1.3rem; font-weight: 700; color: {color};'>${venta:,.0f}</div>
-                <div style='font-size: 0.9rem; color: #666;'>{porcentaje:.1f}% del total</div>
+            <div class='ranking-card' style='border-left: 4px solid {color}'>
+                <div style='display: flex; align-items: center; gap: 0.75rem;'>
+                    <span class='ranking-position'>{position_emoji}</span>
+                    <div style='flex: 1;'>
+                        <div class='ranking-name'>{rest}</div>
+                        <div class='ranking-value'>${venta/1e6:.2f}M</div>
+                        <div class='ranking-percentage'>{porcentaje:.1f}% of total</div>
+                    </div>
+                </div>
             </div>
             """, unsafe_allow_html=True)
 
-st.markdown("---")
-
 # ==========================================
-# ANÁLISIS DE DÍAS
+# DAY OF WEEK ANALYSIS
 # ==========================================
 
-st.header("📆 Análisis por Día de la Semana")
+st.markdown("<div class='divider'></div>", unsafe_allow_html=True)
+st.markdown("<h2 class='section-header'>Day of Week Performance</h2>", unsafe_allow_html=True)
 
+# Map day names
 dias_orden = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
-dias_esp = {
-    'Monday': 'Lunes', 'Tuesday': 'Martes', 'Wednesday': 'Miércoles',
-    'Thursday': 'Jueves', 'Friday': 'Viernes', 'Saturday': 'Sábado', 'Sunday': 'Domingo'
+dias_cortos = {
+    'Monday': 'Mon', 'Tuesday': 'Tue', 'Wednesday': 'Wed',
+    'Thursday': 'Thu', 'Friday': 'Fri', 'Saturday': 'Sat', 'Sunday': 'Sun'
 }
 
 ventas_dia = df_filtrado.groupby('dia_semana')['venta_pesos'].sum()
 ventas_dia = ventas_dia.reindex(dias_orden)
-ventas_dia.index = [dias_esp[d] for d in ventas_dia.index]
+ventas_dia.index = [dias_cortos[d] for d in ventas_dia.index]
 
-col1, col2 = st.columns([3, 2])
+col1, col2 = st.columns([2, 1])
 
 with col1:
-    fig = px.bar(
+    fig = go.Figure()
+    
+    colors = ['#3b82f6' if v == ventas_dia.max() else '#94a3b8' for v in ventas_dia.values]
+    
+    fig.add_trace(go.Bar(
         x=ventas_dia.index,
         y=ventas_dia.values,
-        title='Ventas por Día de la Semana',
-        labels={'x': 'Día', 'y': 'Ventas (COP)'},
-        color=ventas_dia.values,
-        color_continuous_scale='RdYlGn'
+        marker=dict(color=colors, line=dict(color='#1e40af', width=1)),
+        text=[f'${v/1e6:.1f}M' for v in ventas_dia.values],
+        textposition='outside',
+        hovertemplate='<b>%{x}</b><br>Revenue: $%{y:,.0f}<extra></extra>'
+    ))
+    
+    fig.update_layout(
+        title=dict(
+            text='Revenue by Day of Week',
+            font=dict(size=16, color='#1e293b')
+        ),
+        xaxis=dict(title='Day', showgrid=False),
+        yaxis=dict(title='Revenue (COP)', showgrid=True, gridcolor='#f1f5f9'),
+        plot_bgcolor='white',
+        paper_bgcolor='white',
+        height=400,
+        showlegend=False
     )
-    fig.update_layout(showlegend=False, height=400)
+    
     st.plotly_chart(fig, use_container_width=True)
 
 with col2:
     mejor_dia = ventas_dia.idxmax()
     peor_dia = ventas_dia.idxmin()
     
-    st.markdown(f"""
-    <div class='highlight-box' style='border-left-color: #43e97b;'>
-        <h4>🏆 Mejor Día: {mejor_dia}</h4>
-        <p style='font-size: 1.5rem; font-weight: 700; color: #43e97b;'>${ventas_dia[mejor_dia]:,.0f}</p>
-    </div>
-    """, unsafe_allow_html=True)
+    st.markdown("**Performance Summary**")
     
-    st.markdown(f"""
-    <div class='highlight-box' style='border-left-color: #f5576c;'>
-        <h4>⚠️ Peor Día: {peor_dia}</h4>
-        <p style='font-size: 1.5rem; font-weight: 700; color: #f5576c;'>${ventas_dia[peor_dia]:,.0f}</p>
-    </div>
-    """, unsafe_allow_html=True)
+    col_a, col_b = st.columns(2)
+    
+    with col_a:
+        st.metric(
+            label="Peak Day",
+            value=mejor_dia,
+            delta=f"${ventas_dia[mejor_dia]/1e6:.1f}M"
+        )
+    
+    with col_b:
+        st.metric(
+            label="Low Day",
+            value=peor_dia,
+            delta=f"${ventas_dia[peor_dia]/1e6:.1f}M",
+            delta_color="inverse"
+        )
     
     diferencia = ((ventas_dia[mejor_dia] - ventas_dia[peor_dia]) / ventas_dia[peor_dia]) * 100
-    st.info(f"💡 **Insight:** {mejor_dia} vende **{diferencia:.0f}%** más que {peor_dia}")
-
-st.markdown("---")
+    
+    st.markdown(f"""
+    <div class='insight-box'>
+        <p><strong>Insight:</strong> {mejor_dia} outperforms {peor_dia} by {diferencia:.0f}%</p>
+    </div>
+    """, unsafe_allow_html=True)
 
 # ==========================================
-# TOP PRODUCTOS DEL AÑO
+# TOP PRODUCTS
 # ==========================================
 
-st.header("⭐ Top 10 Productos del Año")
+st.markdown("<div class='divider'></div>", unsafe_allow_html=True)
+st.markdown("<h2 class='section-header'>Top 10 Products by Revenue</h2>", unsafe_allow_html=True)
 
 top_productos = df_filtrado.groupby('producto').agg({
     'venta_pesos': 'sum',
     'cantidad_vendida_diaria': 'sum'
 }).sort_values('venta_pesos', ascending=False).head(10)
 
-fig = go.Figure(go.Bar(
-    y=top_productos.index,
-    x=top_productos['venta_pesos'],
+fig = go.Figure()
+
+fig.add_trace(go.Bar(
+    y=top_productos.index[::-1],
+    x=top_productos['venta_pesos'][::-1],
     orientation='h',
     marker=dict(
-        color=top_productos['venta_pesos'],
-        colorscale='Viridis',
-        showscale=True
+        color=top_productos['venta_pesos'][::-1],
+        colorscale=[[0, '#93c5fd'], [1, '#1e3a8a']],
+        line=dict(color='#1e40af', width=1)
     ),
-    text=[f'${v:,.0f}' for v in top_productos['venta_pesos']],
-    textposition='outside'
+    text=[f'${v/1e6:.2f}M' for v in top_productos['venta_pesos'][::-1]],
+    textposition='outside',
+    hovertemplate='<b>%{y}</b><br>Revenue: $%{x:,.0f}<br>Units: %{customdata:,.0f}<extra></extra>',
+    customdata=top_productos['cantidad_vendida_diaria'][::-1]
 ))
 
 fig.update_layout(
-    title='Top 10 Productos por Ventas',
-    xaxis_title='Ventas (COP)',
-    yaxis_title='',
+    title=dict(
+        text='Top Revenue Generators',
+        font=dict(size=16, color='#1e293b')
+    ),
+    xaxis=dict(title='Revenue (COP)', showgrid=True, gridcolor='#f1f5f9'),
+    yaxis=dict(title='', showgrid=False),
+    plot_bgcolor='white',
+    paper_bgcolor='white',
     height=500,
-    showlegend=False
+    showlegend=False,
+    margin=dict(l=200)
 )
 
 st.plotly_chart(fig, use_container_width=True)
 
 # ==========================================
-# RESUMEN EJECUTIVO
+# EXECUTIVE SUMMARY
 # ==========================================
 
-st.markdown("---")
-st.header("📋 Resumen Ejecutivo")
+st.markdown("<div class='divider'></div>", unsafe_allow_html=True)
+st.markdown("<h2 class='section-header'>Executive Summary</h2>", unsafe_allow_html=True)
 
 col1, col2, col3 = st.columns(3)
 
@@ -347,25 +629,27 @@ producto_estrella = df_filtrado.groupby('producto')['venta_pesos'].sum().idxmax(
 ticket_promedio = ventas_totales / unidades_totales if unidades_totales > 0 else 0
 
 with col1:
-    st.markdown(f"""
-    <div class='highlight-box'>
-        <h4>💰 Promedio de Venta Diaria</h4>
-        <p style='font-size: 2rem; font-weight: 700;'>${ventas_promedio_dia:,.0f}</p>
-    </div>
-    """, unsafe_allow_html=True)
+    st.metric(
+        label="Average Daily Revenue",
+        value=f"${ventas_promedio_dia/1e3:.1f}K",
+        help="Mean daily revenue across operating days"
+    )
 
 with col2:
-    st.markdown(f"""
-    <div class='highlight-box' style='border-left-color: #4ECDC4;'>
-        <h4>🏆 Producto Estrella</h4>
-        <p style='font-size: 1.2rem; font-weight: 700;'>{producto_estrella}</p>
-    </div>
-    """, unsafe_allow_html=True)
+    st.metric(
+        label="Top Product",
+        value=producto_estrella[:30] + "..." if len(producto_estrella) > 30 else producto_estrella,
+        help="Highest revenue generating product"
+    )
 
 with col3:
-    st.markdown(f"""
-    <div class='highlight-box' style='border-left-color: #FFD93D;'>
-        <h4>🎫 Ticket Promedio</h4>
-        <p style='font-size: 2rem; font-weight: 700;'>${ticket_promedio:,.0f}</p>
-    </div>
-    """, unsafe_allow_html=True)
+    st.metric(
+        label="Average Transaction Value",
+        value=f"${ticket_promedio:,.0f}",
+        help="Average revenue per unit sold"
+    )
+
+# Footer
+st.markdown("<div style='margin-top: 3rem; padding-top: 2rem; border-top: 1px solid #e2e8f0; text-align: center; color: #94a3b8; font-size: 0.875rem;'>", unsafe_allow_html=True)
+st.markdown(f"Report generated for fiscal year {año_seleccionado} • Data updated through {df_filtrado['fecha'].max().strftime('%B %d, %Y')}")
+st.markdown("</div>", unsafe_allow_html=True)
