@@ -380,23 +380,10 @@ if entrenar:
             status_text.text("Building features...")
             progress_bar.progress(10)
             
-            st.markdown(f"""
-            <div class='progress-info'>
-                <strong>Data Pipeline:</strong> Original dataset contains {len(df_producto)} days
-            </div>
-            """, unsafe_allow_html=True)
-            
             df_features = create_all_features(df_producto)
-            
-            st.markdown(f"""
-            <div class='progress-info'>
-                <strong>Feature Engineering:</strong> Created {len(df_features.columns)} features from {len(df_features)} days
-            </div>
-            """, unsafe_allow_html=True)
-            
             progress_bar.progress(20)
             
-            # Data cleaning
+            # 2. Data cleaning
             status_text.text("Cleaning data...")
             
             essential_cols = ['cantidad_vendida_diaria']
@@ -405,74 +392,34 @@ if entrenar:
             if 'lag_7' in df_features.columns:
                 essential_cols.append('lag_7')
             
-            # Count NaN before cleaning
-            nan_before = df_features[essential_cols].isna().sum()
-            
-            # Drop NaN only in essential columns
             df_clean = df_features.dropna(subset=essential_cols).copy()
-            
-            st.markdown(f"""
-            <div class='progress-info'>
-                <strong>Data Cleaning:</strong> {len(df_clean)} days after removing missing values
-            </div>
-            """, unsafe_allow_html=True)
-            
             progress_bar.progress(25)
             
             # Fill remaining NaN
             status_text.text("Filling missing values...")
             df_clean = df_clean.fillna(method='ffill').fillna(method='bfill').fillna(0)
-            
-            remaining_nan = df_clean.isna().sum().sum()
-            
-            if remaining_nan > 0:
-                st.warning(f"⚠ {remaining_nan} missing values remain after cleaning")
-            
             progress_bar.progress(30)
             
             # Verify minimum data
             if len(df_clean) < 50:
                 st.error(f"Insufficient data after cleaning: {len(df_clean)} days")
-                
-                col1, col2, col3 = st.columns(3)
-                with col1:
-                    st.metric("Original Days", len(df_producto))
-                with col2:
-                    st.metric("With Features", len(df_features))
-                with col3:
-                    st.metric("After Cleaning", len(df_clean))
-                
-                with st.expander("Detailed Diagnostics"):
-                    st.write("**Data Loss Analysis:**")
-                    st.write(f"- Lost in feature engineering: {len(df_producto) - len(df_features)} days")
-                    st.write(f"- Lost in cleaning: {len(df_features) - len(df_clean)} days")
-                    
-                    st.write("\n**Sample Data (with NaN):**")
-                    st.dataframe(df_features[essential_cols].head(20))
-                
                 st.stop()
             
             df_features = df_clean
             
-            # 2. Prepare features and target
+            # 3. Prepare features and target
             status_text.text("Preparing features...")
             progress_bar.progress(35)
             
             feature_cols = get_feature_columns()
             feature_cols = [col for col in feature_cols if col in df_features.columns]
             
-            st.markdown(f"""
-            <div class='progress-info'>
-                <strong>Feature Selection:</strong> Using {len(feature_cols)} predictive features
-            </div>
-            """, unsafe_allow_html=True)
-            
             X = df_features[feature_cols].fillna(0)
             y = df_features['cantidad_vendida_diaria']
             
             progress_bar.progress(40)
             
-            # 3. Temporal split
+            # 4. Temporal split
             status_text.text("Splitting data...")
             
             split_idx = int(len(X) * train_val_split / 100)
@@ -482,15 +429,9 @@ if entrenar:
             X_test = X[split_idx:]
             y_test = y[split_idx:]
             
-            st.markdown(f"""
-            <div class='progress-info'>
-                <strong>Data Split:</strong> Train: {len(X_train)} days | Test: {len(X_test)} days ({100-train_val_split}%)
-            </div>
-            """, unsafe_allow_html=True)
-            
             progress_bar.progress(45)
             
-            # 4. Internal validation split
+            # 5. Internal validation split
             status_text.text("Creating validation set...")
             
             val_split = int(len(X_train) * 0.8)
@@ -499,46 +440,27 @@ if entrenar:
             X_val = X_train[val_split:]
             y_val = y_train[val_split:]
             
-            st.markdown(f"""
-            <div class='progress-info'>
-                <strong>Validation Split:</strong> Inner Train: {len(X_train_inner)} | Validation: {len(X_val)} days
-            </div>
-            """, unsafe_allow_html=True)
-            
             progress_bar.progress(50)
             
-            # 5. Train model
-            status_text.text(f"Training XGBoost ({n_trials} trials)...")
+            # 6. Train model (MOST TIME-CONSUMING STEP)
+            status_text.text(f"Training XGBoost ({n_trials} trials)... This may take a few moments")
             
             predictor = XGBoostPredictor(n_trials=n_trials, confidence_level=0.95)
             predictor.train(X_train_inner, y_train_inner, X_val, y_val)
             
-            st.success("✓ Primary model trained successfully")
-            
             progress_bar.progress(70)
             
-            # 6. Predict on test
+            # 7. Predict on test
             status_text.text("Evaluating on test set...")
             
             y_pred_test, y_pred_test_lower, y_pred_test_upper = predictor.predict(X_test, return_intervals=True)
             
             progress_bar.progress(80)
             
-            # 7. Economic analysis
+            # 8. Economic analysis
             status_text.text("Calculating economic impact...")
             
             costos_unitarios = estimar_costos_unitarios(df_producto)
-            
-            st.markdown(f"""
-            <div class='economic-card'>
-                <h4>Cost Structure Estimation</h4>
-                <ul style='margin: 0; padding-left: 1.5rem; color: #475569;'>
-                    <li><strong>Average unit price:</strong> ${costos_unitarios['precio_unitario']:,.0f} COP</li>
-                    <li><strong>Unit cost (35%):</strong> ${costos_unitarios['costo_unitario']:,.0f} COP</li>
-                    <li><strong>Unit margin (65%):</strong> ${costos_unitarios['margen_unitario']:,.0f} COP</li>
-                </ul>
-            </div>
-            """, unsafe_allow_html=True)
             
             # Generate baselines
             df_with_baselines = generar_baselines(df_features)
@@ -552,7 +474,7 @@ if entrenar:
             
             progress_bar.progress(82)
             
-            # 8. Future prediction setup
+            # 9. Future prediction setup
             status_text.text("Preparing future forecast...")
             
             last_date = df_producto['fecha'].max()
@@ -579,7 +501,7 @@ if entrenar:
             
             progress_bar.progress(85)
             
-            # 9. Generate forecast
+            # 10. Generate forecast
             status_text.text("Generating future predictions...")
             
             y_pred_future, y_pred_future_lower, y_pred_future_upper = predictor.predict(
@@ -589,14 +511,14 @@ if entrenar:
             
             progress_bar.progress(90)
             
-            # 10. Calculate metrics
+            # 11. Calculate metrics
             status_text.text("Calculating performance metrics...")
             
             metrics = calculate_metrics(y_test.values, y_pred_test)
             
             progress_bar.progress(95)
             
-            # 11. Generate alerts
+            # 12. Generate alerts
             status_text.text("Generating intelligent alerts...")
             
             historical_mean = df_producto['cantidad_vendida_diaria'].mean()
@@ -611,9 +533,9 @@ if entrenar:
             )
             
             progress_bar.progress(100)
-            status_text.text("✓ Complete!")
+            status_text.text("Complete!")
             
-            # 12. Save to session state
+            # 13. Save to session state
             st.session_state.update({
                 'predictor': predictor,
                 'metrics': metrics,
